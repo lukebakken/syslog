@@ -302,8 +302,12 @@ init_transport(State = #state{protocol = Protocol}) ->
 %%------------------------------------------------------------------------------
 %% @private
 %%------------------------------------------------------------------------------
-close_transport(#state{device = {Module, Device}}) -> Module:close(Device);
-close_transport(#state{})                          -> ok.
+close_transport(#state{device = {gen_udp, _Opts}}) ->
+    ok;
+close_transport(#state{device = {Module, Device}}) ->
+    Module:close(Device);
+close_transport(#state{})
+    -> ok.
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -320,7 +324,8 @@ ensure_transport(N, Error, State) ->
 %% @private
 %%------------------------------------------------------------------------------
 open_device({udp, Opts}, State) ->
-    open_device_impl(gen_udp, open, [0, Opts], State);
+    %% open_device_impl(gen_udp, open, [0, Opts], State);
+    State#state{device = {gen_udp, Opts}};
 open_device({tcp, Opts}, State = #state{dest_host = H, dest_port = P}) ->
     open_device_impl(gen_tcp, connect, [H, P, Opts, ?TIMEOUT], State);
 open_device({tls, Opts}, State = #state{dest_host = H, dest_port = P}) ->
@@ -349,8 +354,12 @@ open_device_impl(Module, Fun, Args, State) ->
 %%------------------------------------------------------------------------------
 send(_Data, State = #state{device = undefined}) ->
     State;
-send(Data, State = #state{device = {gen_udp, S}, dest_host = H, dest_port = P}) ->
-    ensure_transport(1, gen_udp:send(S, H, P, Data), State);
+%% TODO send(Data, State = #state{device = {gen_udp, S}, dest_host = H, dest_port = P}) ->
+send(Data, State0 = #state{device = {gen_udp, Opts}, dest_host = H, dest_port = P}) ->
+    {ok, S} = gen_udp:open(0, Opts),
+    State1 = ensure_transport(1, gen_udp:send(S, H, P, Data), State0),
+    ok = gen_udp:close(S),
+    State1;
 send(Data, State = #state{device = {gen_tcp, Socket}}) ->
     Frame = [integer_to_list(size(Data)), $\s, Data],
     ensure_transport(1, gen_tcp:send(Socket, Frame), State);
